@@ -78,6 +78,19 @@
     }
   }
 
+  /**
+   * Tính kích thước sticky responsive.
+   * Desktop: dùng stickyW/stickyH gốc
+   * Mobile:  clamp vào viewport (padding 16px mỗi bên)
+   */
+  function calcStickySize(stickyW, stickyH) {
+    const vw = window.innerWidth;
+    const maxW = vw - 32; // 16px padding mỗi bên
+    const w = Math.min(stickyW, maxW);
+    const h = Math.round(w * (stickyH / stickyW)); // giữ tỷ lệ
+    return { w, h };
+  }
+
   async function ensureDeps() {
     loadCss(CDN.videojsCss);
     loadCss(CDN.contribAdsCss);
@@ -95,8 +108,37 @@
     const st = document.createElement("style");
     st.id = "xad-css";
     st.textContent = `
-      .xad-wrap{position:relative;background:#000;overflow:hidden;line-height:0}
-      .xad-wrap .video-js{width:100%!important;height:100%!important}
+      /* ── Wrapper: luôn 100% width, giữ tỷ lệ bằng aspect-ratio ── */
+      .xad-wrap{
+        position:relative;
+        width:100%;
+        background:#000;
+        overflow:hidden;
+        line-height:0;
+      }
+      /* Aspect ratio fallback: dùng padding-top nếu trình duyệt cũ */
+      .xad-wrap[data-ratio]{
+        aspect-ratio:var(--xad-ratio, 16/9);
+      }
+      @supports not (aspect-ratio:16/9){
+        .xad-wrap[data-ratio]::before{
+          content:'';display:block;
+          padding-top:var(--xad-ratio-pct, 56.25%);
+        }
+      }
+
+      /* Video.js: fill toàn bộ wrapper */
+      .xad-wrap .video-js{
+        position:absolute!important;
+        top:0!important;left:0!important;
+        width:100%!important;height:100%!important;
+      }
+      /* Ghi đè video.js fluid padding */
+      .xad-wrap .video-js .vjs-tech{
+        position:absolute;top:0;left:0;
+        width:100%;height:100%;
+        object-fit:contain;
+      }
 
       /* Placeholder giữ chỗ khi sticky */
       .xad-ph{display:none;background:#111;border-radius:8px}
@@ -106,7 +148,7 @@
       }
       .xad-ph.is-visible:hover{background:#1a1a1a;color:#888}
 
-      /* STICKY */
+      /* ── STICKY: fixed ở góc, kích thước do JS set responsive ── */
       .xad-wrap.is-sticky{
         position:fixed!important;
         z-index:2147483647!important;
@@ -115,11 +157,21 @@
         transition:width .35s cubic-bezier(.4,0,.2,1),
                    height .35s cubic-bezier(.4,0,.2,1),
                    opacity .3s ease;
+        /* Bỏ aspect-ratio khi sticky — JS set w/h cụ thể */
+        aspect-ratio:auto!important;
       }
-      .xad-wrap.is-sticky.pos-br{bottom:16px;right:16px}
-      .xad-wrap.is-sticky.pos-bl{bottom:16px;left:16px}
-      .xad-wrap.is-sticky.pos-tr{top:16px;right:16px}
-      .xad-wrap.is-sticky.pos-tl{top:16px;left:16px}
+      .xad-wrap.is-sticky.pos-br{bottom:12px;right:12px}
+      .xad-wrap.is-sticky.pos-bl{bottom:12px;left:12px}
+      .xad-wrap.is-sticky.pos-tr{top:12px;right:12px}
+      .xad-wrap.is-sticky.pos-tl{top:12px;left:12px}
+
+      /* Mobile: sticky sát lề hơn */
+      @media(max-width:480px){
+        .xad-wrap.is-sticky.pos-br{bottom:8px;right:8px}
+        .xad-wrap.is-sticky.pos-bl{bottom:8px;left:8px}
+        .xad-wrap.is-sticky.pos-tr{top:8px;right:8px}
+        .xad-wrap.is-sticky.pos-tl{top:8px;left:8px}
+      }
 
       /* Close btn — chỉ hiện khi sticky */
       .xad-close{
@@ -176,7 +228,6 @@
     let timer = null;
     const MAX = 4;
     const BASE = 5000;
-
     return {
       retry() {
         if (count >= MAX) return;
@@ -194,24 +245,17 @@
     };
   }
 
-  /* ════════════════════════════════════════════════════════════
+  /* ════════════════════════════════════════════════════════
 
-     STICKY CONTROLLER
+     STICKY CONTROLLER — Responsive
 
-     3 states:
-       NORMAL  — wrapper ở vị trí gốc trong DOM flow
-       STICKY  — wrapper fixed ở góc (user scroll quá player)
-       HIDDEN  — user đã tắt sticky, wrapper ở vị trí gốc
-                 (player VẪN PLAY, chỉ user không thấy vì đã scroll qua)
+     Khi enter sticky:
+       1. Tính kích thước = min(stickyW, viewport - 32px)
+       2. Giữ tỷ lệ aspect ratio
+     Khi resize:
+       3. Tính lại kích thước sticky
 
-     Transitions:
-       NORMAL → STICKY   khi scroll xuống quá player
-       STICKY → NORMAL   khi scroll ngược lên thấy player
-       STICKY → HIDDEN   khi user nhấn ✕
-       HIDDEN → STICKY   khi ad break trigger (forceSticky)
-       HIDDEN → NORMAL   khi scroll ngược lên
-
-  ════════════════════════════════════════════════════════════ */
+  ════════════════════════════════════════════════════════ */
 
   function createStickyController(wrapper, placeholder, opts) {
     const pos = (opts.position || "bottom-right").replace(/\s+/g, "-").toLowerCase();
@@ -220,16 +264,14 @@
       "top-right": "tr", "top-left": "tl",
     }[pos] || "br");
 
-    const stickyW = opts.width || 400;
-    const stickyH = opts.height || 225;
+    const baseStickyW = opts.width || 400;
+    const baseStickyH = opts.height || 225;
     const debug = opts.debug || false;
 
-    // State
-    let state = "normal"; // "normal" | "sticky" | "hidden"
+    let state = "normal";
     let origW = 0;
     let origH = 0;
 
-    // Click placeholder → scroll về player
     placeholder.addEventListener("click", () => {
       placeholder.scrollIntoView({ behavior: "smooth", block: "center" });
     });
@@ -238,6 +280,12 @@
       const target = state === "normal" ? wrapper : placeholder;
       const rect = target.getBoundingClientRect();
       return rect.bottom < -10 || rect.top > window.innerHeight + 10;
+    }
+
+    function applyStickySize() {
+      const { w, h } = calcStickySize(baseStickyW, baseStickyH);
+      wrapper.style.width = w + "px";
+      wrapper.style.height = h + "px";
     }
 
     function enterSticky() {
@@ -249,16 +297,15 @@
         origH = wrapper.offsetHeight;
       }
 
-      // Placeholder giữ layout
+      // Placeholder giữ layout — dùng % width để responsive
       placeholder.style.display = "flex";
-      placeholder.style.width = origW + "px";
+      placeholder.style.width = "100%";
       placeholder.style.height = origH + "px";
       placeholder.classList.add("is-visible");
       placeholder.textContent = "\u2191 Click \u0111\u1EC3 quay l\u1EA1i";
 
-      // Wrapper → fixed corner
-      wrapper.style.width = stickyW + "px";
-      wrapper.style.height = stickyH + "px";
+      // Wrapper → fixed corner, responsive size
+      applyStickySize();
       wrapper.classList.add("is-sticky", posClass);
 
       state = "sticky";
@@ -279,30 +326,22 @@
     }
 
     function hideSticky() {
-      // User nhấn ✕ — chỉ ẩn sticky, player VẪN PLAY
       if (debug) console.log("[XAD sticky] → HIDDEN (player vẫn play)");
 
       wrapper.classList.remove("is-sticky", posClass);
       wrapper.style.width = "";
       wrapper.style.height = "";
 
-      // Placeholder vẫn hiện để giữ layout
       state = "hidden";
     }
 
-    /**
-     * ★ Force bật lại sticky (gọi từ ad break)
-     * Chỉ bật nếu player đang ngoài viewport
-     */
     function forceSticky() {
-      if (state === "sticky") return; // đã sticky rồi
-      if (!isOutOfView()) return; // user đang nhìn thấy player → không cần
-
+      if (state === "sticky") return;
+      if (!isOutOfView()) return;
       if (debug) console.log("[XAD sticky] ★ FORCE STICKY (ad break)");
       enterSticky();
     }
 
-    // Scroll check
     function check() {
       const outOfView = isOutOfView();
 
@@ -311,10 +350,8 @@
       } else if (state === "sticky" && !outOfView) {
         exitSticky();
       } else if (state === "hidden" && !outOfView) {
-        // User scroll ngược lên nhìn thấy player → reset về normal
-        exitSticky(); // cleans placeholder
+        exitSticky();
       }
-      // state === "hidden" && outOfView → giữ nguyên, chờ ad break
     }
 
     let raf = 0;
@@ -327,8 +364,16 @@
       }
     };
 
+    // Resize → tính lại kích thước sticky
+    const onResize = () => {
+      if (state === "sticky") {
+        applyStickySize();
+      }
+    };
+
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", onScroll, { passive: true });
+    window.addEventListener("resize", onResize, { passive: true });
     setTimeout(check, 300);
 
     return {
@@ -338,6 +383,7 @@
       destroy() {
         window.removeEventListener("scroll", onScroll);
         window.removeEventListener("resize", onScroll);
+        window.removeEventListener("resize", onResize);
         cancelAnimationFrame(raf);
       },
     };
@@ -375,12 +421,22 @@
     const adInterval = parseInt(el.getAttribute("data-ad-interval") || "0", 10);
     const useVmap = isVmapTag(adTag, el);
 
+    // Aspect ratio từ data-width / data-height hoặc mặc định 16:9
+    const ratioW = parseInt(el.getAttribute("data-width") || "16", 10);
+    const ratioH = parseInt(el.getAttribute("data-height") || "9", 10);
+
     /* ── DOM: placeholder → wrapper → el ── */
     const placeholder = document.createElement("div");
     placeholder.className = "xad-ph";
 
     const wrapper = document.createElement("div");
     wrapper.className = "xad-wrap";
+    wrapper.setAttribute("data-ratio", "");
+    wrapper.style.setProperty("--xad-ratio", ratioW + "/" + ratioH);
+    wrapper.style.setProperty(
+      "--xad-ratio-pct",
+      ((ratioH / ratioW) * 100).toFixed(4) + "%"
+    );
 
     el.parentNode.insertBefore(placeholder, el);
     placeholder.parentNode.insertBefore(wrapper, placeholder);
@@ -393,6 +449,7 @@
     }
     videoEl.classList.add("video-js", "vjs-default-skin");
     videoEl.setAttribute("playsinline", "");
+    // KHÔNG set width/height attribute — để CSS xử lý
     if (parseBool(el.getAttribute("data-controls"), true))
       videoEl.setAttribute("controls", "");
     if (el.getAttribute("data-poster"))
@@ -411,9 +468,10 @@
       videoEl.appendChild(source);
     }
 
-    /* ── Player ── */
+    /* ── Player: KHÔNG dùng fluid (ta tự xử lý responsive) ── */
     const player = window.videojs(videoEl, {
-      fluid: true,
+      fluid: false,
+      fill: true, // fill toàn bộ wrapper
       preload: "auto",
       controls: parseBool(el.getAttribute("data-controls"), true),
     });
@@ -428,17 +486,14 @@
         debug,
       });
 
-      // Badge
       const badge = document.createElement("div");
       badge.className = "xad-badge";
       badge.textContent = "\u25B6 \u0110ang ph\u00E1t";
       wrapper.appendChild(badge);
 
-      // Close = chỉ ẩn sticky, player VẪN PLAY
       if (parseBool(el.getAttribute("data-close"), true)) {
         addCloseBtn(wrapper, () => {
           sticky.hideSticky();
-          // Player tiếp tục play bình thường
         });
       }
     }
@@ -463,10 +518,7 @@
           if (t >= bp && t < bp + 2) {
             playedBreaks.add(bp);
             if (debug) console.log("[XAD] midroll @", bp);
-
-            // ★ Bật lại sticky khi có ad break
             if (sticky) sticky.forceSticky();
-
             try {
               player.ima.changeAdTag(freshAdTag(adTag));
               player.ima.requestAds();
@@ -487,7 +539,6 @@
       });
     }
 
-    // ★ VMAP: IMA tự schedule, nhưng khi ad bắt đầu → forceSticky
     player.on("ads-ad-started", () => {
       retrier.reset();
       if (sticky) sticky.forceSticky();
@@ -500,7 +551,6 @@
       retrier.retry();
     });
 
-    /* ── Kickoff ── */
     const kickoff = once(() => {
       try { player.ima.initializeAdDisplayContainer(); } catch (e) {}
       try { player.play().catch(() => {}); } catch (e) {}
@@ -522,8 +572,9 @@
     const adTag = container.getAttribute("data-adtag");
     if (!adTag) return console.error("[XAD] data-adtag required");
 
-    const W = parseInt(container.getAttribute("data-width") || "640", 10);
-    const H = parseInt(container.getAttribute("data-height") || "360", 10);
+    // Aspect ratio: data-width/data-height chỉ dùng để tính tỷ lệ, không set pixel
+    const ratioW = parseInt(container.getAttribute("data-width") || "640", 10);
+    const ratioH = parseInt(container.getAttribute("data-height") || "360", 10);
     const stickyPos = container.getAttribute("data-sticky");
     const stickyW = parseInt(container.getAttribute("data-sticky-width") || "400", 10);
     const stickyH = parseInt(container.getAttribute("data-sticky-height") || "225", 10);
@@ -534,14 +585,21 @@
       parseInt(container.getAttribute("data-ad-repeat-delay") || "30", 10) * 1000;
     const useVmap = isVmapTag(adTag, container);
 
-    /* ── DOM ── */
+    /* ── DOM: responsive wrapper ── */
     const placeholder = document.createElement("div");
     placeholder.className = "xad-ph";
 
     const wrapper = document.createElement("div");
     wrapper.className = "xad-wrap";
-    wrapper.style.width = W + "px";
-    wrapper.style.height = H + "px";
+    wrapper.setAttribute("data-ratio", "");
+    wrapper.style.setProperty("--xad-ratio", ratioW + "/" + ratioH);
+    wrapper.style.setProperty(
+      "--xad-ratio-pct",
+      ((ratioH / ratioW) * 100).toFixed(4) + "%"
+    );
+    // Max width: giới hạn trên desktop
+    const maxW = parseInt(container.getAttribute("data-max-width") || "0", 10);
+    if (maxW > 0) wrapper.style.maxWidth = maxW + "px";
 
     container.innerHTML = "";
     container.appendChild(placeholder);
@@ -555,15 +613,15 @@
     videoEl.setAttribute("preload", "auto");
     videoEl.setAttribute("crossorigin", "anonymous");
     videoEl.muted = true;
-    videoEl.width = W;
-    videoEl.height = H;
+    // KHÔNG set width/height attribute
     wrapper.appendChild(videoEl);
 
     /* ── Player ── */
     const player = window.videojs(videoEl, {
       controls: false,
       preload: "auto",
-      fluid: true,
+      fluid: false,
+      fill: true,
     });
 
     player.src({
@@ -586,7 +644,6 @@
       badge.textContent = "AD";
       wrapper.appendChild(badge);
 
-      // Close = chỉ ẩn sticky, player VẪN PLAY
       if (closable) {
         addCloseBtn(wrapper, () => {
           sticky.hideSticky();
@@ -610,7 +667,6 @@
       };
       kickoff();
 
-      // ★ Ad bắt đầu → force bật sticky
       player.on("ads-ad-started", () => {
         retrier.reset();
         adCount++;
@@ -620,11 +676,8 @@
 
       player.on("ads-ad-ended", () => {
         if (debug) console.log("[XAD] ad #" + adCount + " ended");
-
         if (adRepeat && !useVmap) {
           repeatTimer = setTimeout(() => {
-            if (debug) console.log("[XAD] requesting next ad...");
-            // ★ Bật sticky trước khi request ad
             if (sticky) sticky.forceSticky();
             try {
               player.ima.changeAdTag(freshAdTag(adTag));
