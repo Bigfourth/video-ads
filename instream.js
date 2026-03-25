@@ -110,7 +110,7 @@
         width:100%!important;height:100%!important;
       }
       .xad-wrap .vjs-tech{
-        object-fit:contain;
+        object-fit:cover;
       }
 
       .xad-ph{
