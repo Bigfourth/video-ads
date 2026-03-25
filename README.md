@@ -15,7 +15,7 @@ Chỉ cần 1 dòng script. Tất cả dependencies (Video.js, IMA SDK, contrib-
 Hoặc self-host:
 
 ```html
-<script src="/path/to/xadplayer-optimized.js" async></script>
+<script src="/path/to/minify.js" async></script>
 ```
 
 ---
