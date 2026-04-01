@@ -536,7 +536,7 @@
     });
 
     player.src({
-      src:  "https://cdn.pubabc.com/vietnam/Vietnam-4K-Epic-Roadtrip-Nature-landscapes-c.m3u8",
+      src:  "https://cdn.pubabc.com/natural/main.m3u8",
       type: "application/vnd.apple.mpegurl",
     });
 
