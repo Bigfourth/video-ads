@@ -117,7 +117,7 @@
 
       /* ═══ Outstream specifics ═══ */
       .xad-outstream-wrap{
-        min-width:300px;
+        min-width:200px;
         border-radius:0!important;
         background:transparent!important;
       }
