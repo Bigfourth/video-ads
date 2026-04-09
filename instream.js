@@ -125,23 +125,16 @@
       }
       .xad-ph:hover{background:#1a1a1a;color:#888}
 
-      /* ── STICKY ──
-         FIX: Bỏ width:auto!important và height:auto!important
-         vì chúng ghi đè inline style được set bởi enterSticky().
-         Kích thước được kiểm soát hoàn toàn qua JS (wrapper.style.width/height).
-      */
       .xad-wrap.is-sticky{
         position:fixed!important;
         z-index:2147483647!important;
-        padding-top:0!important;        /* tắt padding-top trick khi sticky */
+        padding-top:0!important;
         overflow:visible!important;
         border-radius:12px;
         box-shadow:0 8px 32px rgba(0,0,0,.5);
         transition:width .3s ease, height .3s ease;
       }
 
-      /* Khi sticky, video-js dùng relative thay vì absolute
-         vì wrapper không còn dùng padding-top trick nữa */
       .xad-wrap.is-sticky>.video-js{
         position:relative!important;
         width:100%!important;
@@ -158,17 +151,22 @@
         .xad-wrap.is-sticky.pos-tr{top:8px;right:8px}
         .xad-wrap.is-sticky.pos-tl{top:8px;left:8px}
       }
-
       .xad-close{
-        position:absolute;top:-13px;right:6px;
-        width:28px;height:28px;border:none;border-radius:50%;
-        background:#fff;color:#000;font-size:18px;
-        line-height:28px;text-align:center;cursor:pointer;
-        z-index:20;opacity:0;pointer-events:none;
+        position:absolute;
+        top:-14px;
+        right:-14px;
+        width:28px;height:28px;
+        border:none;border-radius:50%;
+        background:#fff;color:#000;
+        font-size:18px;line-height:28px;
+        text-align:center;cursor:pointer;
+        z-index:20;
+        opacity:0;pointer-events:none;
         transition:opacity .25s;
+        box-shadow:0 2px 6px rgba(0,0,0,.35);
       }
       .xad-wrap.is-sticky .xad-close{opacity:1;pointer-events:auto}
-      .xad-close:hover{background:rgba(255,255,255,.25)}
+      .xad-close:hover{background:rgba(255,255,255,.85)}
 
       .xad-badge{
         position:absolute;bottom:8px;left:8px;
@@ -205,7 +203,31 @@
     return breaks.sort((a, b) => a - b);
   }
 
-  /* ════════════════  Retry backoff  ════════════════ */
+  function autoAdSchedule(duration, debug) {
+    let breakStr   = "pre,post";
+    let intervalSec = 0;
+
+    if (duration < 180) {
+      breakStr    = "pre";
+      intervalSec = 0;
+    } else if (duration < 300) {
+      breakStr    = "pre,post";
+      intervalSec = 0;
+    } else if (duration < 480) {
+      breakStr    = "pre,50%,post";
+      intervalSec = 0;
+    } else if (duration <= 720) {
+      breakStr    = "pre,post";
+      intervalSec = 120;
+    } else {
+      breakStr    = "pre,post";
+      intervalSec = 180;
+    }
+
+    const schedule = buildAdBreaks(breakStr, intervalSec, duration);
+    if (debug) console.log("[XAD] auto-schedule (dur=" + Math.round(duration) + "s):", schedule);
+    return schedule;
+  }
 
   function createRetrier(player, baseAdTag, debug) {
     let count = 0;
@@ -227,8 +249,6 @@
     };
   }
 
-  /* ════════════════  Sticky Controller  ════════════════ */
-
   function createStickyController(wrapper, placeholder, opts) {
     const pos = (opts.position || "bottom-right").replace(/\s+/g, "-").toLowerCase();
     const posClass = "pos-" + ({
@@ -248,8 +268,6 @@
     });
 
     function isOutOfView() {
-      // STICKY → wrapper đang fixed, dùng placeholder để biết vị trí flow
-      // NORMAL / HIDDEN → wrapper đang trong flow, đo trực tiếp
       const target = state === "sticky" ? placeholder : wrapper;
       const rect = target.getBoundingClientRect();
       return rect.bottom < -10 || rect.top > window.innerHeight + 10;
@@ -259,17 +277,13 @@
       if (state === "sticky") return;
       if (debug) console.log("[XAD sticky] " + state + " → STICKY");
 
-      // Đo height thực tế trước khi thay đổi
       const origH = wrapper.getBoundingClientRect().height || wrapper.offsetHeight;
 
-      // Hiện placeholder giữ chỗ trong layout
       placeholder.style.display = "flex";
       placeholder.style.width   = "100%";
       placeholder.style.height  = Math.max(origH, 50) + "px";
       placeholder.textContent   = "\u2191 Quay l\u1EA1i";
 
-      // FIX: set width/height TRƯỚC khi add class is-sticky
-      // Hoặc dùng setProperty với important để không bị CSS override
       const { w, h } = calcStickySize(baseStickyW, baseStickyH);
       wrapper.style.setProperty("width",  w + "px", "important");
       wrapper.style.setProperty("height", h + "px", "important");
@@ -282,7 +296,6 @@
       if (debug) console.log("[XAD sticky] " + state + " → NORMAL");
 
       wrapper.classList.remove("is-sticky", posClass);
-      // Xóa inline width/height, trả lại padding-top trick
       wrapper.style.removeProperty("width");
       wrapper.style.removeProperty("height");
       wrapper.style.paddingTop = ratioPct;
@@ -353,8 +366,6 @@
     };
   }
 
-  /* ════════════════  Close button  ════════════════ */
-
   function addCloseBtn(wrapper, onClick) {
     const btn = document.createElement("button");
     btn.className = "xad-close";
@@ -365,8 +376,6 @@
     wrapper.appendChild(btn);
   }
 
-  /* ════════════════  Responsive wrapper  ════════════════ */
-
   function setupResponsiveWrapper(wrapper, ratioW, ratioH, maxWidth) {
     const pct = ((ratioH / ratioW) * 100).toFixed(4) + "%";
     wrapper.className      = "xad-wrap";
@@ -374,8 +383,6 @@
     if (maxWidth > 0) wrapper.style.maxWidth = maxWidth + "px";
     return pct;
   }
-
-  /* ════════════════  INSTREAM  ════════════════ */
 
   function mountInstream(el) {
     injectStyles();
@@ -388,12 +395,14 @@
     const stickyPos  = el.getAttribute("data-sticky");
     const stickyW    = parseInt(el.getAttribute("data-sticky-width")  || "400", 10);
     const stickyH    = parseInt(el.getAttribute("data-sticky-height") || "225", 10);
-    const adBreakStr = el.getAttribute("data-ad-breaks");
+    const adBreakStr = el.getAttribute("data-ad-breaks");   // null = auto
     const adInterval = parseInt(el.getAttribute("data-ad-interval") || "0", 10);
     const useVmap    = isVmapTag(adTag, el);
     const ratioW     = parseInt(el.getAttribute("data-width")     || "16", 10);
     const ratioH     = parseInt(el.getAttribute("data-height")    || "9",  10);
     const maxWidth   = parseInt(el.getAttribute("data-max-width") || "0",  10);
+
+    const manualBreaks = adBreakStr !== null || adInterval > 0;
 
     const placeholder = document.createElement("div");
     placeholder.className = "xad-ph";
@@ -449,15 +458,21 @@
     }
 
     player.ima({ adTagUrl: freshAdTag(adTag), debug });
-    const retrier    = createRetrier(player, adTag, debug);
-    let adSchedule   = [];
+    const retrier      = createRetrier(player, adTag, debug);
+    let adSchedule     = [];
     const playedBreaks = new Set();
 
     if (!useVmap) {
       player.on("loadedmetadata", () => {
-        adSchedule = buildAdBreaks(adBreakStr, adInterval, player.duration());
-        if (debug) console.log("[XAD] VAST breaks:", adSchedule);
+        const dur = player.duration();
+        if (manualBreaks) {
+          adSchedule = buildAdBreaks(adBreakStr, adInterval, dur);
+          if (debug) console.log("[XAD] VAST breaks (manual):", adSchedule);
+        } else {
+          adSchedule = autoAdSchedule(dur, debug);
+        }
       });
+
       player.on("timeupdate", () => {
         const t = player.currentTime();
         for (const bp of adSchedule) {
@@ -469,6 +484,7 @@
           }
         }
       });
+
       player.on("ended", () => {
         if (adSchedule.includes(-1) && !playedBreaks.has(-1)) {
           playedBreaks.add(-1);
@@ -491,7 +507,6 @@
     return player;
   }
 
-  /* ════════════════  OUTSTREAM  ════════════════ */
 
   function mountOutstream(container) {
     injectStyles();
@@ -598,8 +613,6 @@
 
     return player;
   }
-
-  /* ════════════════  Mount  ════════════════ */
 
   async function mountAll(root = document) {
     await ensureDeps();
