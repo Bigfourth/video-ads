@@ -154,7 +154,7 @@
       .xad-close{
         position:absolute;
         top:-14px;
-        right:-14px;
+        right:-14px;                     
         width:28px;height:28px;
         border:none;border-radius:50%;
         background:#fff;color:#000;
@@ -202,7 +202,6 @@
     if (!breaks.length) breaks.push(0);
     return breaks.sort((a, b) => a - b);
   }
-
   function autoAdSchedule(duration, debug) {
     let breakStr   = "pre,post";
     let intervalSec = 0;
@@ -220,6 +219,7 @@
       breakStr    = "pre,post";
       intervalSec = 120;
     } else {
+      // > 12 min: pre + mỗi 180s + post
       breakStr    = "pre,post";
       intervalSec = 180;
     }
@@ -229,14 +229,22 @@
     return schedule;
   }
 
+  /* ════════════════  Retry backoff  ════════════════ */
+
   function createRetrier(player, baseAdTag, debug) {
     let count = 0;
     let timer = null;
+    function jitter() { return Math.floor(Math.random() * 5000); }
     return {
       retry() {
-        if (count >= 4) return;
-        const delay = 5000 * Math.pow(2, count++);
-        if (debug) console.log("[XAD] retry #" + count + " in " + delay + "ms");
+        if (count >= 4) {
+          if (debug) console.log("[XAD] max retries reached, giving up");
+          return;
+        }
+        // Base 15s x 2^n + jitter: ~15s, ~35s, ~75s, ~155s
+        // Dài hơn để tránh bị Google rate-limit khi lỗi 303 No Fill
+        const delay = 15000 * Math.pow(2, count++) + jitter();
+        if (debug) console.log("[XAD] retry #" + count + " in " + Math.round(delay / 1000) + "s");
         timer = setTimeout(() => {
           try {
             player.ima.changeAdTag(freshAdTag(baseAdTag));
@@ -248,6 +256,8 @@
       cancel() { if (timer) clearTimeout(timer); },
     };
   }
+
+  /* ════════════════  Sticky Controller  ════════════════ */
 
   function createStickyController(wrapper, placeholder, opts) {
     const pos = (opts.position || "bottom-right").replace(/\s+/g, "-").toLowerCase();
@@ -366,6 +376,8 @@
     };
   }
 
+  /* ════════════════  Close button  ════════════════ */
+
   function addCloseBtn(wrapper, onClick) {
     const btn = document.createElement("button");
     btn.className = "xad-close";
@@ -376,6 +388,8 @@
     wrapper.appendChild(btn);
   }
 
+  /* ════════════════  Responsive wrapper  ════════════════ */
+
   function setupResponsiveWrapper(wrapper, ratioW, ratioH, maxWidth) {
     const pct = ((ratioH / ratioW) * 100).toFixed(4) + "%";
     wrapper.className      = "xad-wrap";
@@ -383,6 +397,8 @@
     if (maxWidth > 0) wrapper.style.maxWidth = maxWidth + "px";
     return pct;
   }
+
+  /* ════════════════  INSTREAM  ════════════════ */
 
   function mountInstream(el) {
     injectStyles();
@@ -402,6 +418,7 @@
     const ratioH     = parseInt(el.getAttribute("data-height")    || "9",  10);
     const maxWidth   = parseInt(el.getAttribute("data-max-width") || "0",  10);
 
+    // Nếu người dùng không set breaks/interval → dùng auto-schedule
     const manualBreaks = adBreakStr !== null || adInterval > 0;
 
     const placeholder = document.createElement("div");
@@ -507,6 +524,7 @@
     return player;
   }
 
+  /* ════════════════  OUTSTREAM  ════════════════ */
 
   function mountOutstream(container) {
     injectStyles();
@@ -613,6 +631,8 @@
 
     return player;
   }
+
+  /* ════════════════  Mount  ════════════════ */
 
   async function mountAll(root = document) {
     await ensureDeps();
