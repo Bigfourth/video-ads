@@ -173,9 +173,9 @@
 
       /* Close btn */
       .xad-close{
-        position:absolute;top:6px;right:6px;
+        position:absolute;top:-14px;right:-14px;
         width:28px;height:28px;border:none;border-radius:50%;
-        background:rgba(0,0,0,.7);color:#fff;font-size:18px;
+        background:#fff;color:#000;font-size:18px;
         line-height:28px;text-align:center;cursor:pointer;
         z-index:20;opacity:0;pointer-events:none;transition:opacity .25s;
       }
