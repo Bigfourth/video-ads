@@ -1,4 +1,3 @@
-<script>
 (function () {
   "use strict";
 
@@ -661,4 +660,3 @@
     mountAll().catch(console.error);
   }
 })();
-</script>
