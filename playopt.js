@@ -491,7 +491,7 @@
     const stickyW      = parseInt(container.getAttribute("data-sticky-width")     || "400", 10);
     const stickyH      = parseInt(container.getAttribute("data-sticky-height")    || "225", 10);
     const stickyBottom = container.getAttribute("data-sticky-bottom") || "";
-    const brandAttr = el.getAttribute("data-brand");
+    const brandAttr = container.getAttribute("data-brand");
     const brand = brandAttr === null ? "BIGFOURTH" : brandAttr;
     const closable     = parseBool(container.getAttribute("data-close"),           true);
     const debug        = parseBool(container.getAttribute("data-debug"),           false);
