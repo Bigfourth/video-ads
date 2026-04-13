@@ -44,14 +44,16 @@
     try { return new URL(adTag).searchParams.get("output") === "vmap"; } catch (e) { return false; }
   }
   function freshAdTag(adTag) {
-    try {
-      const url = new URL(adTag);
-      url.searchParams.set("correlator", String(Date.now()));
-      return url.toString();
-    } catch (e) {
-      return adTag + (adTag.includes("?") ? "&" : "?") + "correlator=" + Date.now();
-    }
+  try {
+    const url = new URL(adTag);
+    const correlator = Date.now() + Math.floor(Math.random() * 1e9);
+    url.searchParams.set("correlator", String(correlator));
+    return url.toString();
+  } catch (e) {
+    const correlator = Date.now() + Math.floor(Math.random() * 1e9);
+    return adTag + (adTag.includes("?") ? "&" : "?") + "correlator=" + correlator;
   }
+}
   function calcStickySize(baseW, baseH) {
     const ratio   = baseH / baseW;
     const isMobile = window.innerWidth <= 600;
