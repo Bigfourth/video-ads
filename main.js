@@ -421,6 +421,16 @@
     const player = window.videojs(videoEl, {
       fluid: false, preload: "auto",
       controls: parseBool(el.getAttribute("data-controls"), true),
+	  html5: {
+	    vhs: {
+	      overrideNative: true,
+	      enableLowInitialPlaylist: true, 
+	      smoothQualityChange: true,
+		  maxBufferLength: 30,
+          maxMaxBufferLength: 60,
+      	  enableWorker: true
+	    }
+	  },
     });
 
     let sticky = null;
@@ -531,7 +541,22 @@
     videoEl.muted = true;
     wrapper.appendChild(videoEl);
 
-    const player = window.videojs(videoEl, { controls: false, preload: "auto", fluid: false, loop: true });
+    const player = window.videojs(videoEl, { 
+		controls: false, 
+		preload: "auto", 
+		fluid: false, 
+		loop: true,
+		html5: {
+		    vhs: {
+		      overrideNative: true,
+		      enableLowInitialPlaylist: true, // load nhanh hơn
+		      smoothQualityChange: true,
+			  maxBufferLength: 30,
+      		  maxMaxBufferLength: 60,
+      		  enableWorker: true
+		    }
+		}
+	});
 
     const videoSrc = resolveVideoSrc(container);
     if (debug) console.log("[XAD] outstream src:", videoSrc);
