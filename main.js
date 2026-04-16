@@ -425,7 +425,6 @@
 	    vhs: {
 	      overrideNative: true,
 	      enableLowInitialPlaylist: true, 
-	      smoothQualityChange: true,
 		  maxBufferLength: 30,
           maxMaxBufferLength: 60,
       	  enableWorker: true
@@ -549,10 +548,9 @@
 		html5: {
 		    vhs: {
 		      overrideNative: true,
-		      enableLowInitialPlaylist: true, // load nhanh hơn
-		      smoothQualityChange: true,
-			  maxBufferLength: 30,
-      		  maxMaxBufferLength: 60,
+		      enableLowInitialPlaylist: true, 
+			  maxBufferLength: 15,
+          	  maxMaxBufferLength: 30,
       		  enableWorker: true
 		    }
 		}
